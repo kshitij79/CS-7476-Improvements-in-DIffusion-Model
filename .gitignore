@@ -5,3 +5,14 @@
 requirements.txt
 
 /__pycache__/
+
+/images/
+
+/venv/
+
+/.vscode/
+
+/.idea/
+
+# Ignore .env file
+.env
