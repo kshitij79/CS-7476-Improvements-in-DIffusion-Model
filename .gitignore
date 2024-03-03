@@ -3,3 +3,5 @@
 
 # Ignore requirements.txt file
 requirements.txt
+
+/__pycache__/
