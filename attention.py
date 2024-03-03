@@ -3,6 +3,8 @@ from torch import nn
 from torch.nn import functional as F
 import math
 
+count = 0
+
 class SelfAttention(nn.Module):
     def __init__(self, n_heads, d_embed, in_proj_bias=True, out_proj_bias=True):
         super().__init__()
@@ -105,7 +107,9 @@ class CrossAttention(nn.Module):
         
         # (Batch_Size, H, Seq_Len_Q, Seq_Len_KV)
         weight = F.softmax(weight, dim=-1)
-        
+
+        print(weight, y)
+
         # (Batch_Size, H, Seq_Len_Q, Seq_Len_KV) @ (Batch_Size, H, Seq_Len_KV, Dim_Q / H) -> (Batch_Size, H, Seq_Len_Q, Dim_Q / H)
         output = weight @ v
         

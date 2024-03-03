@@ -114,7 +114,7 @@ def generate(
 
         diffusion = models["diffusion"]
         diffusion.to(device)
-
+        attention_maps = []
         timesteps = tqdm(sampler.timesteps)
         for i, timestep in enumerate(timesteps):
             # (1, 320)
@@ -130,6 +130,11 @@ def generate(
             # model_output is the predicted noise
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
             model_output = diffusion(model_input, context, time_embedding)
+
+            if sampler_name == "ddpm":
+                attention_map = sampler.get_attention_map()
+                print(f"Attention Map: {attention_map}")
+                attention_maps.append(attention_map)
 
             if do_cfg:
                 output_cond, output_uncond = model_output.chunk(2)

@@ -1,5 +1,6 @@
 import os
 import requests
+from huggingface_hub import hf_hub_download
 
 # Create the data folder if it doesn't exist
 data_folder = 'data'
@@ -30,3 +31,11 @@ with open(merges_path, 'wb') as f:
 #     f.write(response_ckpt.content)
 
 print("Files downloaded and saved to the 'data' folder.")
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+filename = "v1-5-pruned-emaonly.ckpt"
+
+# Download the model file
+ckpt_path = hf_hub_download(repo_id=repo_id, filename=filename, cache_dir=data_folder)
+
+print(f"Model downloaded and saved to {ckpt_path}")
