@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from ddpm import DDPMSampler
+from filter_subject_token import extract_subject_tokens
 
 WIDTH = 512
 HEIGHT = 512
@@ -31,6 +32,10 @@ def generate(
             to_idle = lambda x: x.to(idle_device)
         else:
             to_idle = lambda x: x
+
+        # Extract subject tokens and their clip encodings from the prompt
+        subject_info = extract_subject_tokens(prompt, models["clip"], device, tokenizer)
+        print(f"Subject Info: {subject_info}")
 
         # Initialize random number generator according to the seed specified
         generator = torch.Generator(device=device)
@@ -129,7 +134,7 @@ def generate(
 
             # model_output is the predicted noise
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
-            model_output = diffusion(model_input, context, time_embedding)
+            model_output = diffusion(model_input, context, time_embedding, subject_info)
 
             if sampler_name == "ddpm":
                 attention_map = sampler.get_attention_map()

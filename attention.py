@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import math
+from cross_attention_map import visualize_attention_maps
 
 count = 0
 
@@ -76,7 +77,7 @@ class CrossAttention(nn.Module):
         self.n_heads = n_heads
         self.d_head = d_embed // n_heads
     
-    def forward(self, x, y):
+    def forward(self, x, y, subject_info, time):
         # x (latent): # (Batch_Size, Seq_Len_Q, Dim_Q)
         # y (context): # (Batch_Size, Seq_Len_KV, Dim_KV) = (Batch_Size, 77, 768)
 
@@ -108,7 +109,8 @@ class CrossAttention(nn.Module):
         # (Batch_Size, H, Seq_Len_Q, Seq_Len_KV)
         weight = F.softmax(weight, dim=-1)
 
-        print(weight, y)
+        # print(subject_info)
+        visualize_attention_maps(weight, subject_info, time)
 
         # (Batch_Size, H, Seq_Len_Q, Seq_Len_KV) @ (Batch_Size, H, Seq_Len_KV, Dim_Q / H) -> (Batch_Size, H, Seq_Len_Q, Dim_Q / H)
         output = weight @ v

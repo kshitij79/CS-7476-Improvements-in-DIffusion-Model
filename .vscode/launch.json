@@ -5,13 +5,15 @@
     "version": "0.2.0",
     "configurations": [
 
+
         {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "python_path": "/Users/kshitijpathania/anaconda3/envs/CS-7476/bin/python"
         }
     ]
 }

@@ -93,7 +93,7 @@ class UNET_AttentionBlock(nn.Module):
 
         self.conv_output = nn.Conv2d(channels, channels, kernel_size=1, padding=0)
     
-    def forward(self, x, context):
+    def forward(self, x, context, subject_info=None, time=None):
         # x: (Batch_Size, Features, Height, Width)
         # context: (Batch_Size, Seq_Len, Dim)
 
@@ -136,7 +136,7 @@ class UNET_AttentionBlock(nn.Module):
         x = self.layernorm_2(x)
         
         # (Batch_Size, Height * Width, Features) -> (Batch_Size, Height * Width, Features)
-        x = self.attention_2(x, context)
+        x = self.attention_2(x, context, subject_info, time)
         
         # (Batch_Size, Height * Width, Features) + (Batch_Size, Height * Width, Features) -> (Batch_Size, Height * Width, Features)
         x += residue_short
@@ -183,10 +183,10 @@ class Upsample(nn.Module):
         return self.conv(x)
 
 class SwitchSequential(nn.Sequential):
-    def forward(self, x, context, time):
+    def forward(self, x, context, time, subject_info=None):
         for layer in self:
             if isinstance(layer, UNET_AttentionBlock):
-                x = layer(x, context)
+                x = layer(x, context, subject_info, time)
             elif isinstance(layer, UNET_ResidualBlock):
                 x = layer(x, time)
             else:
@@ -283,14 +283,14 @@ class UNET(nn.Module):
             SwitchSequential(UNET_ResidualBlock(640, 320), UNET_AttentionBlock(8, 40)),
         ])
 
-    def forward(self, x, context, time):
+    def forward(self, x, context, time, subject_info=None):
         # x: (Batch_Size, 4, Height / 8, Width / 8)
         # context: (Batch_Size, Seq_Len, Dim) 
         # time: (1, 1280)
 
         skip_connections = []
         for layers in self.encoders:
-            x = layers(x, context, time)
+            x = layers(x, context, time, subject_info)
             skip_connections.append(x)
 
         x = self.bottleneck(x, context, time)
@@ -331,7 +331,7 @@ class Diffusion(nn.Module):
         self.unet = UNET()
         self.final = UNET_OutputLayer(320, 4)
     
-    def forward(self, latent, context, time):
+    def forward(self, latent, context, time, subject_info=None):
         # latent: (Batch_Size, 4, Height / 8, Width / 8)
         # context: (Batch_Size, Seq_Len, Dim)
         # time: (1, 320)
@@ -340,7 +340,7 @@ class Diffusion(nn.Module):
         time = self.time_embedding(time)
         
         # (Batch, 4, Height / 8, Width / 8) -> (Batch, 320, Height / 8, Width / 8)
-        output = self.unet(latent, context, time)
+        output = self.unet(latent, context, time, subject_info)
         
         # (Batch, 320, Height / 8, Width / 8) -> (Batch, 4, Height / 8, Width / 8)
         output = self.final(output)
