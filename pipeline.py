@@ -3,6 +3,7 @@ import numpy as np
 from tqdm import tqdm
 from ddpm import DDPMSampler
 from filter_subject_token import extract_subject_tokens
+from subject_attention_maps import extract_subject_attention_maps
 
 WIDTH = 512
 HEIGHT = 512
@@ -119,7 +120,6 @@ def generate(
 
         diffusion = models["diffusion"]
         diffusion.to(device)
-        attention_maps = []
         timesteps = tqdm(sampler.timesteps)
         for i, timestep in enumerate(timesteps):
             # (1, 320)
@@ -134,16 +134,15 @@ def generate(
 
             # model_output is the predicted noise
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
-            model_output = diffusion(model_input, context, time_embedding, subject_info)
-
-            if sampler_name == "ddpm":
-                attention_map = sampler.get_attention_map()
-                print(f"Attention Map: {attention_map}")
-                attention_maps.append(attention_map)
+            model_output = diffusion(model_input, context, time_embedding)
 
             if do_cfg:
                 output_cond, output_uncond = model_output.chunk(2)
                 model_output = cfg_scale * (output_cond - output_uncond) + output_uncond
+                attention_map = diffusion.get_attention_map()
+                subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
+                print(f"Subject Attention Maps: {subject_attention_maps}")
+                diffusion.set_attention_map({})
 
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = sampler.step(timestep, latents, model_output)

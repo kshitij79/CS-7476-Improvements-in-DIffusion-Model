@@ -77,7 +77,7 @@ class CrossAttention(nn.Module):
         self.n_heads = n_heads
         self.d_head = d_embed // n_heads
     
-    def forward(self, x, y, subject_info, time):
+    def forward(self, x, y, time, attention_map, store_attention=True):
         # x (latent): # (Batch_Size, Seq_Len_Q, Dim_Q)
         # y (context): # (Batch_Size, Seq_Len_KV, Dim_KV) = (Batch_Size, 77, 768)
 
@@ -109,8 +109,19 @@ class CrossAttention(nn.Module):
         # (Batch_Size, H, Seq_Len_Q, Seq_Len_KV)
         weight = F.softmax(weight, dim=-1)
 
-        # print(subject_info)
-        visualize_attention_maps(weight, subject_info, time)
+        # visualize_attention_maps(weight, subject_info, time)           
+        if store_attention:
+            batch_size, n_heads, seq_len_q, seq_len_kv = weight.size()
+            key = str(seq_len_q)
+
+            taken_keys = set(attention_map.keys())
+            for i in range(6):
+                new_key = key + "_" + str(i)
+                if new_key not in taken_keys:
+                    attention_map[new_key] = weight.detach().cpu()
+                    break
+
+        print(key)
 
         # (Batch_Size, H, Seq_Len_Q, Seq_Len_KV) @ (Batch_Size, H, Seq_Len_KV, Dim_Q / H) -> (Batch_Size, H, Seq_Len_Q, Dim_Q / H)
         output = weight @ v
