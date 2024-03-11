@@ -3,7 +3,7 @@ import numpy as np
 from tqdm import tqdm
 from ddpm import DDPMSampler
 from filter_subject_token import extract_subject_tokens
-from subject_attention_maps import extract_subject_attention_maps
+from subject_attention_maps import cumulative_attention_map, extract_subject_attention_maps
 
 WIDTH = 512
 HEIGHT = 512
@@ -141,7 +141,8 @@ def generate(
                 model_output = cfg_scale * (output_cond - output_uncond) + output_uncond
                 attention_map = diffusion.get_attention_map()
                 subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
-                print(f"Subject Attention Maps: {subject_attention_maps}")
+                cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
+                print(f"Cumulative Attention Maps: {cumulative_attention_maps}")
                 diffusion.set_attention_map({})
 
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
