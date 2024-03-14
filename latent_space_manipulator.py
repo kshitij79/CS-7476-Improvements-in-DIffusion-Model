@@ -1,7 +1,11 @@
 import torch
 
-def generate_mask(cumulative_attention_maps, threshold=0.5):
+def generate_mask(cumulative_attention_maps, threshold=0.00025):
     # Threshold the cumulative attention maps
+    print("max of cumulative_attention_maps: ", torch.max(cumulative_attention_maps))
+    print("min of cumulative_attention_maps: ", torch.min(cumulative_attention_maps))
+    print("mean of cumulative_attention_maps: ", torch.mean(cumulative_attention_maps))
+    # TODO: devise a strategy to threshold the cumulative_attention_maps
     mask = (cumulative_attention_maps > threshold).float()
     return mask
 
@@ -21,5 +25,6 @@ def latent_space_manipulation(latents, noised_latent_t, cumulative_attention_map
 
 def timestamps_to_manipulate(sampler):
     # control which other noised latents are needed for particular timesteps
-    timesteps = [sampler.timesteps[1], sampler.timesteps[2], sampler.timesteps[5]]
+    # TODO: devise a strategy to select timesteps for manipulating latent space
+    timesteps = [sampler.timesteps[5], sampler.timesteps[10], sampler.timesteps[15]]
     return timesteps

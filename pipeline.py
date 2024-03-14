@@ -147,8 +147,8 @@ def generate(
 
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = sampler.step(timestep, latents, model_output)
-                        
-            if int(sampler.timesteps[i+1]) in noised_latents.keys():
+            # int(sampler.timesteps[i+1]) in if condition also handle the last timestep
+            if i < len(sampler.timesteps) - 1 and int(sampler.timesteps[i+1]) in noised_latents.keys():            
                 attention_map = diffusion.get_attention_map()
                 subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
                 cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
