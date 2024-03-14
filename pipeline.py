@@ -3,7 +3,8 @@ import numpy as np
 from tqdm import tqdm
 from ddpm import DDPMSampler
 from filter_subject_token import extract_subject_tokens
-from subject_attention_maps import cumulative_attention_map, extract_subject_attention_maps
+from subject_attention_maps import cumulative_attention_map, extract_subject_attention_maps, cumulative_subject_attention_map
+from latent_space_manipulator import latent_space_manipulation, timestamps_to_manipulate
 
 WIDTH = 512
 HEIGHT = 512
@@ -85,6 +86,7 @@ def generate(
             raise ValueError("Unknown sampler value %s. ")
 
         latents_shape = (1, 4, LATENTS_HEIGHT, LATENTS_WIDTH)
+        noised_latents = dict()
 
         if input_image:
             encoder = models["encoder"]
@@ -107,11 +109,14 @@ def generate(
             encoder_noise = torch.randn(latents_shape, generator=generator, device=device)
             # (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = encoder(input_image_tensor, encoder_noise)
-
             # Add noise to the latents (the encoded input image)
             # (Batch_Size, 4, Latents_Height, Latents_Width)
             sampler.set_strength(strength=strength)
-            latents = sampler.add_noise(latents, sampler.timesteps[0])
+
+            # control which other noised latents are needed for particular timesteps
+            other_timesteps = timestamps_to_manipulate(sampler)
+            print(f"Other Timesteps: {other_timesteps}")
+            latents, noised_latents = sampler.add_noise(latents, sampler.timesteps[0], other_timesteps)
 
             to_idle(encoder)
         else:
@@ -139,14 +144,21 @@ def generate(
             if do_cfg:
                 output_cond, output_uncond = model_output.chunk(2)
                 model_output = cfg_scale * (output_cond - output_uncond) + output_uncond
-                attention_map = diffusion.get_attention_map()
-                subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
-                cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
-                print(f"Cumulative Attention Maps: {cumulative_attention_maps}")
-                diffusion.set_attention_map({})
+
 
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = sampler.step(timestep, latents, model_output)
+                        
+            print(int(sampler.timesteps[i+1]) in noised_latents.keys())
+            print(int(sampler.timesteps[i+1]))
+            if int(sampler.timesteps[i+1]) in noised_latents.keys():
+                attention_map = diffusion.get_attention_map()
+                subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
+                cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
+                cumulative_attention_maps = cumulative_subject_attention_map(cumulative_attention_maps)
+
+                diffusion.set_attention_map({})
+                latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], cumulative_attention_maps)
 
         to_idle(diffusion)
 

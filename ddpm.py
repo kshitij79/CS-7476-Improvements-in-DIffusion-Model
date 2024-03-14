@@ -97,6 +97,7 @@ class DDPMSampler:
         self,
         original_samples: torch.FloatTensor,
         timesteps: torch.IntTensor,
+        other_timesteps: list = None,
     ) -> torch.FloatTensor:
         alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
@@ -116,7 +117,23 @@ class DDPMSampler:
         # here mu = sqrt_alpha_prod * original_samples and sigma = sqrt_one_minus_alpha_prod
         noise = torch.randn(original_samples.shape, generator=self.generator, device=original_samples.device, dtype=original_samples.dtype)
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
-        return noisy_samples
+        
+        noised_latents_at_t = dict()
+        if other_timesteps != None:
+            for timestep in other_timesteps:
+                sqrt_alpha_prod = alphas_cumprod[timestep] ** 0.5
+                sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+                while len(sqrt_alpha_prod.shape) < len(noisy_samples.shape):
+                    sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
+                sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timestep]) ** 0.5
+                sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
+                while len(sqrt_one_minus_alpha_prod.shape) < len(noisy_samples.shape):
+                    sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
+                noised_latents_at_t[int(timestep.item())]=sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+
+        return noisy_samples, noised_latents_at_t
+    
+    
 
         
 

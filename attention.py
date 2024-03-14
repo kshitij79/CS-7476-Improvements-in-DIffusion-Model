@@ -121,8 +121,6 @@ class CrossAttention(nn.Module):
                     attention_map[new_key] = weight.detach().cpu()
                     break
 
-        print(key)
-
         # (Batch_Size, H, Seq_Len_Q, Seq_Len_KV) @ (Batch_Size, H, Seq_Len_KV, Dim_Q / H) -> (Batch_Size, H, Seq_Len_Q, Dim_Q / H)
         output = weight @ v
         
