@@ -13,7 +13,8 @@ def extract_subject_tokens(prompt, clip_model, device, tokenizer):
     # Extract subject tokens and their positions
     subject_info = {}
     for token in doc:
-        if token.pos_ in ['NOUN', 'PROPN']:  # Check if token is subject
+        # if token.pos_ in ['NOUN', 'PROPN']:  # Check if token is subject
+        if token.pos_ in ['NOUN']:  # Check if token is subject    
             subject_info[token.text] = token.i  # Save token text and position
     
     return subject_info

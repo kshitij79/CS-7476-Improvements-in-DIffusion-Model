@@ -104,7 +104,6 @@ def generate(
             # (Batch_Size, Height, Width, Channel) -> (Batch_Size, Channel, Height, Width)
             input_image_tensor = input_image_tensor.permute(0, 3, 1, 2)
             input_image_tensor = input_image_tensor.to(device)
-            print(f"The tensor is on device: {input_image_tensor.device}")
             # (Batch_Size, 4, Latents_Height, Latents_Width)
             encoder_noise = torch.randn(latents_shape, generator=generator, device=device)
             # (Batch_Size, 4, Latents_Height, Latents_Width)
@@ -115,7 +114,7 @@ def generate(
 
             # control which other noised latents are needed for particular timesteps
             other_timesteps = timestamps_to_manipulate(sampler)
-            print(f"Other Timesteps: {other_timesteps}")
+            print(f"Timesteps for manipulating latent space: {other_timesteps}")
             latents, noised_latents = sampler.add_noise(latents, sampler.timesteps[0], other_timesteps)
 
             to_idle(encoder)
@@ -149,8 +148,6 @@ def generate(
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = sampler.step(timestep, latents, model_output)
                         
-            print(int(sampler.timesteps[i+1]) in noised_latents.keys())
-            print(int(sampler.timesteps[i+1]))
             if int(sampler.timesteps[i+1]) in noised_latents.keys():
                 attention_map = diffusion.get_attention_map()
                 subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
