@@ -38,6 +38,25 @@ def visualize_attention_maps(attentions, subject_info, time, folder='images'):
             plt.savefig(filename)
             plt.close()
 
+def visualize_cumulative_map(cumulative_attention_map, time):
+    """
+    Visualizes the cumulative attention map at a specific time index.
+    
+    Parameters:
+        cumulative_attention_map (dict): Cumulative attention maps for different subjects.
+        time (int): Index of the time step to visualize.
+    """
+    # Assuming cumulative_attention_map is a dictionary with subject names as keys
+    for subject, attention_map in cumulative_attention_map.items():
+        # Assuming attention_map is a 4D tensor with shape [batch_size, 1, target_size, target_size]
+        # Extract attention map for the specified time index
+        attention_map_time = attention_map[0][0]
+        # Plot the attention map
+        plt.imshow(attention_map_time, cmap='hot', interpolation='nearest')
+        plt.title(f'Cumulative Attention Map for {subject} at Time Step {time}')
+        plt.colorbar()
+        plt.show()   
+
 # Example usage:
 # Assuming attentions is the attention tensor of shape (Batch_Size, H, Seq_Len_Q, Seq_Len_KV)
 # and subject_info is a dictionary containing subject tokens and their indices

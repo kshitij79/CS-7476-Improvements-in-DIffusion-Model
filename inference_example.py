@@ -27,7 +27,7 @@ models = model_loader.preload_models_from_standard_weights(model_file, DEVICE)
 ## TEXT TO IMAGE
 
 # prompt = "A dog with sunglasses, wearing comfy hat, looking at camera, highly detailed, ultra sharp, cinematic, 100mm lens, 8k resolution."
-prompt = "News anchor named sneha is delivering the weather report on laptop in the news room of news channel atlanta news first"
+prompt = "News anchor is delivering the weather report."
 uncond_prompt = ""  # Also known as negative prompt
 do_cfg = True
 cfg_scale = 8  # min: 1, max: 14

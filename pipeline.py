@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from tqdm import tqdm
+from cross_attention_map import visualize_cumulative_map
 from ddpm import DDPMSampler
 from filter_subject_token import extract_subject_tokens
 from subject_attention_maps import cumulative_attention_map, extract_subject_attention_maps, cumulative_subject_attention_map
@@ -153,7 +154,8 @@ def generate(
                 subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
                 cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
                 cumulative_attention_maps = cumulative_subject_attention_map(cumulative_attention_maps)
-
+                visualize_cumulative_map(cumulative_attention_maps, int(sampler.timesteps[i+1]))
+                
                 diffusion.set_attention_map({})
                 latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], cumulative_attention_maps)
 
