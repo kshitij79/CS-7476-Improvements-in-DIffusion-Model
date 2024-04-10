@@ -1,18 +1,30 @@
 import torch
 
-def generate_mask(cumulative_attention_maps, threshold=0.00025):
+def generate_mask(attention_map, threshold=0.00025):
     # Threshold the cumulative attention maps
-    print("max of cumulative_attention_maps: ", torch.max(cumulative_attention_maps))
-    print("min of cumulative_attention_maps: ", torch.min(cumulative_attention_maps))
-    print("mean of cumulative_attention_maps: ", torch.mean(cumulative_attention_maps))
-    # TODO: devise a strategy to threshold the cumulative_attention_maps
-    mask = (cumulative_attention_maps > threshold).float()
+    print("max of attention_map: ", torch.max(attention_map))
+    print("min of attention_map: ", torch.min(attention_map))
+    print("mean of attention_map: ", torch.mean(attention_map))
+    # TODO: devise a strategy to threshold the attention_map
+    threshold =  torch.mean(attention_map)
+
+    mask = (attention_map > threshold).float()
     return mask
 
-def latent_space_manipulation(latents, noised_latent_t, cumulative_attention_maps):
+def intersect_masks(masks):
+    mask = masks[0]
+    
+    # Iterate over the rest of the tensors and multiply them with the mask
+    for m in masks[1:]:
+        mask *= m
+        
+    return mask
 
-    # Generate mask
-    mask = generate_mask(cumulative_attention_maps)
+def latent_space_manipulation(latents, noised_latent_t, attention_maps):
+
+    # Generate masks for each attention map
+    masks = [generate_mask(attention_map) for attention_map in attention_maps]
+    mask = intersect_masks(masks)
 
     # Find indices where mask is 0
     zero_indices = (mask == 0).nonzero()
@@ -26,5 +38,6 @@ def latent_space_manipulation(latents, noised_latent_t, cumulative_attention_map
 def timestamps_to_manipulate(sampler):
     # control which other noised latents are needed for particular timesteps
     # TODO: devise a strategy to select timesteps for manipulating latent space
-    timesteps = [sampler.timesteps[5], sampler.timesteps[10], sampler.timesteps[15]]
+    timesteps = [sampler.timesteps[1], sampler.timesteps[10], sampler.timesteps[15]]
     return timesteps
+

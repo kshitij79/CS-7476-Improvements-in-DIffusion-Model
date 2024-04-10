@@ -3,7 +3,38 @@ from torch import nn
 from torch.nn import functional as F
 import math
 from cross_attention_map import visualize_attention_maps
+import torch.autograd as autograd
 
+class SoftmaxWithGrad(autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        output = F.softmax(input, dim=-1)
+        ctx.save_for_backward(output)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        output, = ctx.saved_tensors
+        s = output.reshape(-1, 1, output.size(-1))
+        grad_output = grad_output.reshape_as(s)
+
+        # Jacobian computation:
+        # Diagonal part
+        diag = s * torch.eye(s.size(-1), device=s.device)
+        # Outer part
+        outer = -s.transpose(-1, -2) * s
+
+        # Combining the diagonal and outer parts
+        jacobian = diag + outer
+
+        # Batched matrix multiplication with grad_output
+        grad_input = torch.bmm(jacobian, grad_output)
+
+        # Reshape back to the original shape
+        grad_input = grad_input.reshape_as(output)
+
+        return grad_input
+    
 count = 0
 
 class SelfAttention(nn.Module):
@@ -76,7 +107,8 @@ class CrossAttention(nn.Module):
         self.out_proj = nn.Linear(d_embed, d_embed, bias=out_proj_bias)
         self.n_heads = n_heads
         self.d_head = d_embed // n_heads
-    
+        self.softmax_weights = None
+
     def forward(self, x, y, time, attention_map, store_attention=True):
         # x (latent): # (Batch_Size, Seq_Len_Q, Dim_Q)
         # y (context): # (Batch_Size, Seq_Len_KV, Dim_KV) = (Batch_Size, 77, 768)
@@ -108,21 +140,10 @@ class CrossAttention(nn.Module):
         
         # (Batch_Size, H, Seq_Len_Q, Seq_Len_KV)
         weight = F.softmax(weight, dim=-1)
-
-        # visualize_attention_maps(weight, subject_info, time)           
-        if store_attention:
-            batch_size, n_heads, seq_len_q, seq_len_kv = weight.size()
-            key = str(seq_len_q)
-
-            taken_keys = set(attention_map.keys())
-            for i in range(6):
-                new_key = key + "_" + str(i)
-                if new_key not in taken_keys:
-                    attention_map[new_key] = weight.detach().cpu()
-                    break
+        self.softmax_weights = weight.requires_grad_(True) #weight.requires_grad_(True)
 
         # (Batch_Size, H, Seq_Len_Q, Seq_Len_KV) @ (Batch_Size, H, Seq_Len_KV, Dim_Q / H) -> (Batch_Size, H, Seq_Len_Q, Dim_Q / H)
-        output = weight @ v
+        output = self.softmax_weights @ v # weight @ v
         
         # (Batch_Size, H, Seq_Len_Q, Dim_Q / H) -> (Batch_Size, Seq_Len_Q, H, Dim_Q / H)
         output = output.transpose(1, 2).contiguous()

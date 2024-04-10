@@ -332,6 +332,7 @@ class Diffusion(nn.Module):
         self.unet = UNET()
         self.final = UNET_OutputLayer(320, 4)
         self.attention_map_store = {}
+        self.attention_map_gradients = {}
     
     def forward(self, latent, context, time):
         # latent: (Batch_Size, 4, Height / 8, Width / 8)
@@ -349,9 +350,68 @@ class Diffusion(nn.Module):
         
         # (Batch, 4, Height / 8, Width / 8)
         return output
-    
+
     def get_attention_map(self):
         return self.attention_map_store
     
+    def get_attention_map_gradients(self):
+        return self.attention_map_gradients
+    
     def set_attention_map(self, attention_map):
         self.attention_map_store = attention_map
+
+    def compute_gradients(self, latent, context, time):
+        # Forward pass
+        # Clear any previously stored softmax weights references
+        self.softmax_weights_refs = []
+        
+        # Custom function to save softmax weights
+        def save_softmax_weights(module, input, output):
+            if hasattr(module, 'softmax_weights'):
+                self.softmax_weights_refs.append(module.softmax_weights)
+        
+        # Register forward hooks to save softmax weights references
+        def register_save_hooks(module):
+            for layer in module.modules():
+                if isinstance(layer, CrossAttention):
+                    layer.register_forward_hook(save_softmax_weights)
+
+        def remove_hooks(module):
+            for layer in module.modules():
+                if isinstance(layer, CrossAttention):
+                    layer._forward_hooks.clear()            
+        
+        # Traverse through the UNET to register hooks to save softmax weights references
+        register_save_hooks(self.unet)
+
+        # Perform the forward pass
+        output = self.forward(latent, context, time)
+
+        # Compute loss (e.g., sum of output)
+        loss = output.sum()
+        
+        # Compute gradients for all saved softmax weights in cross-attention layer
+        for i, softmax_weights_ref in enumerate(self.softmax_weights_refs):
+            if softmax_weights_ref.requires_grad:
+                # Set retain_graph=False on the last iteration
+                retain_graph = i < len(self.softmax_weights_refs) - 1
+                softmax_gradients = torch.autograd.grad(loss, softmax_weights_ref, retain_graph=retain_graph)[0]
+                _, _, seq_len_q, _ = softmax_weights_ref.size()
+                # Determine the storage key
+                if seq_len_q not in self.attention_map_gradients:
+                    self.attention_map_gradients[seq_len_q] = {}
+                    self.attention_map_store[seq_len_q] = {}
+
+                key = str(len(self.attention_map_gradients[seq_len_q]))
+                
+                # Store gradients and weights
+                self.attention_map_gradients[seq_len_q][key] = softmax_gradients
+                self.attention_map_store[seq_len_q][key] = softmax_weights_ref.detach().clone()
+        
+        # Clear the gradients after computation to prevent accumulation
+        self.zero_grad()
+        # remove hooks
+        remove_hooks(self.unet)
+      
+    
+

@@ -1,11 +1,12 @@
 import torch
 import numpy as np
 from tqdm import tqdm
+from attention_attribution import attention_map_dict_to_list, attribution_pipeline, calculate_contributions
 from cross_attention_map import visualize_cumulative_map
 from ddpm import DDPMSampler
 from filter_subject_token import extract_subject_tokens
 from subject_attention_maps import cumulative_attention_map, extract_subject_attention_maps, cumulative_subject_attention_map
-from latent_space_manipulator import latent_space_manipulation, timestamps_to_manipulate
+from latent_space_manipulator import intersect_masks, latent_space_manipulation, timestamps_to_manipulate
 
 WIDTH = 512
 HEIGHT = 512
@@ -149,15 +150,26 @@ def generate(
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = sampler.step(timestep, latents, model_output)
             # int(sampler.timesteps[i+1]) in if condition also handle the last timestep
-            if i < len(sampler.timesteps) - 1 and int(sampler.timesteps[i+1]) in noised_latents.keys():            
-                attention_map = diffusion.get_attention_map()
-                subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
-                cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
-                cumulative_attention_maps = cumulative_subject_attention_map(cumulative_attention_maps)
-                visualize_cumulative_map(cumulative_attention_maps, int(sampler.timesteps[i+1]))
-                
+            if i < len(sampler.timesteps) - 1 and int(sampler.timesteps[i+1]) in noised_latents.keys():
+                # set the attention map to empty
                 diffusion.set_attention_map({})
-                latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], cumulative_attention_maps)
+                with torch.enable_grad():
+                    diffusion.compute_gradients(model_input, context, time_embedding)
+                # get the attention map gradients and attention map    
+                attention_gradients = diffusion.get_attention_map_gradients()
+                attention_map = diffusion.get_attention_map()
+                
+                # attention maps based on contribution
+                attention_maps_for_masks = attribution_pipeline(attention_gradients, attention_map, subject_info)
+                attention_maps = attention_map_dict_to_list(attention_maps_for_masks)
+                # subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
+                # cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
+                # visualize_cumulative_map(cumulative_attention_maps, int(sampler.timesteps[i+1]))
+                # cumulative_attention_maps = cumulative_subject_attention_map(cumulative_attention_maps)
+                
+                # remove the attention map
+                diffusion.set_attention_map({})
+                latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], attention_maps)
 
         to_idle(diffusion)
 
@@ -190,3 +202,12 @@ def get_time_embedding(timestep):
     x = torch.tensor([timestep], dtype=torch.float32)[:, None] * freqs[None]
     # Shape: (1, 160 * 2)
     return torch.cat([torch.cos(x), torch.sin(x)], dim=-1)
+
+def extract_attention_gradients(model_output, context):
+    # First, clear previous gradients
+    context.requires_grad_(True)
+    model_output.sum().backward()
+    # Gradient of model output w.r.t. context
+    attention_gradients = context.grad
+    context.requires_grad_(False)  # Reset requires_grad to False for context tensor
+    return attention_gradients
