@@ -66,3 +66,7 @@ output_image = pipeline.generate(
 
 # Combine the input image and the output image into a single image.
 Image.fromarray(output_image)
+
+# store this image locally in the current directory
+output_image_path = Path("./output_image.png")
+output_image.save(output_image_path)

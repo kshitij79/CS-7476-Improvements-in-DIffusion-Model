@@ -169,6 +169,7 @@ def generate(
                 
                 # remove the attention map
                 diffusion.set_attention_map({})
+                diffusion.set_attention_map_gradients({})
                 latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], attention_maps)
 
         to_idle(diffusion)

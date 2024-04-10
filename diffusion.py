@@ -360,6 +360,9 @@ class Diffusion(nn.Module):
     def set_attention_map(self, attention_map):
         self.attention_map_store = attention_map
 
+    def set_attention_map_gradients(self, attention_map_gradients):
+        self.attention_map_gradients = attention_map_gradients    
+
     def compute_gradients(self, latent, context, time):
         # Forward pass
         # Clear any previously stored softmax weights references
