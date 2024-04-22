@@ -20,18 +20,28 @@ def intersect_masks(masks):
         
     return mask
 
-def latent_space_manipulation(latents, noised_latent_t, attention_maps):
+def latent_space_manipulation(latents, noised_latent_t, attention_maps, is_gradients=False):
 
-    # Generate masks for each attention map
-    masks = [generate_mask(attention_map) for attention_map in attention_maps]
-    mask = intersect_masks(masks)
+    if is_gradients:
+        # Generate masks for each attention map
+        masks = [generate_mask(attention_map) for attention_map in attention_maps]
+        mask = intersect_masks(masks)
 
-    # Find indices where mask is 0
-    zero_indices = (mask == 0).nonzero()
+        # Find indices where mask is 0
+        zero_indices = (mask == 0).nonzero()
 
-    # Replace values in latents with corresponding values from noised_latent_t
-    for idx in zero_indices:
-        latents[0, :, idx[2], idx[3]] = noised_latent_t[0, :, idx[2], idx[3]]
+        # Replace values in latents with corresponding values from noised_latent_t
+        for idx in zero_indices:
+            latents[0, :, idx[2], idx[3]] = noised_latent_t[0, :, idx[2], idx[3]]
+    else:
+        mask = generate_mask(attention_maps)
+
+        # Find indices where mask is 0
+        zero_indices = (mask == 0).nonzero()
+
+        # Replace values in latents with corresponding values from noised_latent_t
+        for idx in zero_indices:
+            latents[0, :, idx[2], idx[3]] = noised_latent_t[0, :, idx[2], idx[3]]        
 
     return latents
 

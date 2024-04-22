@@ -109,7 +109,7 @@ class CrossAttention(nn.Module):
         self.d_head = d_embed // n_heads
         self.softmax_weights = None
 
-    def forward(self, x, y, time, attention_map, store_attention=True):
+    def forward(self, x, y, time, store_attention=True):
         # x (latent): # (Batch_Size, Seq_Len_Q, Dim_Q)
         # y (context): # (Batch_Size, Seq_Len_KV, Dim_KV) = (Batch_Size, 77, 768)
 

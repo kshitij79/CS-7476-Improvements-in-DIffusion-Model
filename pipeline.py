@@ -6,7 +6,9 @@ from cross_attention_map import visualize_cumulative_map
 from ddpm import DDPMSampler
 from filter_subject_token import extract_subject_tokens
 from subject_attention_maps import cumulative_attention_map, extract_subject_attention_maps, cumulative_subject_attention_map
-from latent_space_manipulator import intersect_masks, latent_space_manipulation, timestamps_to_manipulate
+from latent_space_manipulator import timestamps_to_manipulate, latent_space_manipulation
+from gradient_utils import compress_attention_gradients, latent_space_manipulation as grad_manipulator, score_map, score_map_dict_to_list, score_map_with_subjects, latent_space_manipulation_subjectwise as grad_manipulator_2
+from attention_attribution import attribution_pipeline, attention_map_dict_to_list
 
 WIDTH = 512
 HEIGHT = 512
@@ -124,6 +126,7 @@ def generate(
             # (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = torch.randn(latents_shape, generator=generator, device=device)
 
+        latents = torch.randn(latents_shape, generator=generator, device=device)
         diffusion = models["diffusion"]
         diffusion.to(device)
         timesteps = tqdm(sampler.timesteps)
@@ -154,23 +157,37 @@ def generate(
                 # set the attention map to empty
                 diffusion.set_attention_map({})
                 with torch.enable_grad():
-                    diffusion.compute_gradients(model_input, context, time_embedding)
+                    # world_size = torch.cuda.device_count()
+                    # torch.multiprocessing.spawn(main, args=(world_size, model_input, context, time_embedding), nprocs=world_size)
+                    diffusion.compute_gradients(model_input, context, time_embedding, subject_info)
                 # get the attention map gradients and attention map    
                 attention_gradients = diffusion.get_attention_map_gradients()
                 attention_map = diffusion.get_attention_map()
                 
-                # attention maps based on contribution
-                attention_maps_for_masks = attribution_pipeline(attention_gradients, attention_map, subject_info)
-                attention_maps = attention_map_dict_to_list(attention_maps_for_masks)
-                # subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
-                # cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
-                # visualize_cumulative_map(cumulative_attention_maps, int(sampler.timesteps[i+1]))
-                # cumulative_attention_maps = cumulative_subject_attention_map(cumulative_attention_maps)
-                
-                # remove the attention map
-                diffusion.set_attention_map({})
-                diffusion.set_attention_map_gradients({})
-                latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], attention_maps)
+                gradient_dynamics = True
+                gradient_aggregated = False
+
+                if gradient_dynamics:
+                    # score = score_map(attention_gradients, model_output)
+                    score = score_map_with_subjects(attention_gradients, model_output)
+                    diffusion.set_attention_map({})
+                    diffusion.set_attention_map_gradients({})
+                    latents = grad_manipulator_2(latents, noised_latents[int(sampler.timesteps[i+1])], score)
+                elif gradient_aggregated:
+                    # attention maps based on contribution
+                    attention_maps_for_masks = attribution_pipeline(attention_gradients, attention_map, subject_info)
+                    attention_maps = attention_map_dict_to_list(attention_maps_for_masks)
+                    diffusion.set_attention_map({})
+                    diffusion.set_attention_map_gradients({})
+                    latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], attention_maps)
+                else:    
+                    subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
+                    cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
+                    # visualize_cumulative_map(cumulative_attention_maps, int(sampler.timesteps[i+1]))
+                    cumulative_attention_maps = cumulative_subject_attention_map(cumulative_attention_maps)
+                    diffusion.set_attention_map({})
+                    diffusion.set_attention_map_gradients({})
+                    latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], cumulative_attention_maps)
 
         to_idle(diffusion)
 

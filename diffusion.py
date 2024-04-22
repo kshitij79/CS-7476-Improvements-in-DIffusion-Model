@@ -2,6 +2,10 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from attention import SelfAttention, CrossAttention
+from gradient_utils import compress_attention_gradients, importance_score
+import os
+import time as tm
+# from torch.autograd.functional import jacobian
 
 class TimeEmbedding(nn.Module):
     def __init__(self, n_embd):
@@ -361,10 +365,9 @@ class Diffusion(nn.Module):
         self.attention_map_store = attention_map
 
     def set_attention_map_gradients(self, attention_map_gradients):
-        self.attention_map_gradients = attention_map_gradients    
+        self.attention_map_gradients = attention_map_gradients   
 
-    def compute_gradients(self, latent, context, time):
-        # Forward pass
+    def compute_gradients(self, latent, context, time, subject_info):
         # Clear any previously stored softmax weights references
         self.softmax_weights_refs = []
         
@@ -390,31 +393,96 @@ class Diffusion(nn.Module):
         # Perform the forward pass
         output = self.forward(latent, context, time)
 
-        # Compute loss (e.g., sum of output)
-        loss = output.sum()
+        gradient_dynamics = True
+        gradient_aggregated = False
         
-        # Compute gradients for all saved softmax weights in cross-attention layer
-        for i, softmax_weights_ref in enumerate(self.softmax_weights_refs):
-            if softmax_weights_ref.requires_grad:
-                # Set retain_graph=False on the last iteration
-                retain_graph = i < len(self.softmax_weights_refs) - 1
-                softmax_gradients = torch.autograd.grad(loss, softmax_weights_ref, retain_graph=retain_graph)[0]
-                _, _, seq_len_q, _ = softmax_weights_ref.size()
-                # Determine the storage key
-                if seq_len_q not in self.attention_map_gradients:
-                    self.attention_map_gradients[seq_len_q] = {}
-                    self.attention_map_store[seq_len_q] = {}
+        # if torch.cuda.is_available():
+        #     output = output.cuda()
+        #     for k, softmax_weights_ref in enumerate(self.softmax_weights_refs):
+        #         self.softmax_weights_refs[k] = softmax_weights_ref.cuda()
+        cross_attention_layers = len(self.softmax_weights_refs) - 1
+        if torch.cuda.is_available():
+            output = output.cuda()
+            new_softmax_weights_refs = []
+            for k, softmax_weights_ref in enumerate(self.softmax_weights_refs):
+                print(k, softmax_weights_ref.shape)
+                if k == cross_attention_layers:
+                    new_softmax_weights_refs.append(softmax_weights_ref.cuda())
+            self.softmax_weights_refs = new_softmax_weights_refs
+            
+        if gradient_dynamics:
+            batch_size = 8  # Set the desired batch size (hyperparameter)
+            num_batches = (output.size(1) * output.size(2) * output.size(3) + batch_size - 1) // batch_size
+            progress_interval = num_batches // 10
+            start_time = tm.time()
+            
+            for batch_idx in range(num_batches):
+                batch_losses = []
+                batch_indexes = []
+                for idx in range(batch_idx * batch_size, min((batch_idx + 1) * batch_size, output.size(1) * output.size(2) * output.size(3))):
+                    c = idx // (output.size(2) * output.size(3))
+                    i = (idx % (output.size(2) * output.size(3))) // output.size(3)
+                    j = (idx % (output.size(2) * output.size(3))) % output.size(3)
 
-                key = str(len(self.attention_map_gradients[seq_len_q]))
-                
-                # Store gradients and weights
-                self.attention_map_gradients[seq_len_q][key] = softmax_gradients
-                self.attention_map_store[seq_len_q][key] = softmax_weights_ref.detach().clone()
-        
-        # Clear the gradients after computation to prevent accumulation
+                    loss = output[0, c, i, j]
+                    batch_losses.append(loss)
+                    batch_indexes.append((c, i, j))
+
+                batch_losses = torch.stack(batch_losses)
+                grad_outputs_tensor = [torch.randn(batch_size) for _ in range(batch_losses.size(0))] 
+                grad_outputs = torch.stack(grad_outputs_tensor)
+                grad_outputs = grad_outputs.cuda()
+
+                self.softmax_weights_refs =self.softmax_weights_refs[::-1]
+                for k, softmax_weights_ref in enumerate(self.softmax_weights_refs):
+                    if softmax_weights_ref.requires_grad:
+                        _, _, seq_len_q, _ = softmax_weights_ref.size()
+                        if seq_len_q not in self.attention_map_gradients:
+                            self.attention_map_gradients[seq_len_q] = {}
+                            self.attention_map_store[seq_len_q] = {}
+                        
+                        batch_gradients = torch.autograd.grad(batch_losses, softmax_weights_ref, grad_outputs=grad_outputs, is_grads_batched=True, allow_unused = True, retain_graph=True)
+
+                        batch_compressed_gradients = importance_score(softmax_weights_ref, batch_gradients, subject_info)
+
+                        for idx, (c, i, j) in enumerate(batch_indexes):
+                            key = f'k{k}_b0_c{c}_i{i}_j{j}'
+                            self.attention_map_gradients[seq_len_q][key] = batch_compressed_gradients[idx]
+
+                torch.cuda.synchronize()
+
+                if batch_idx % progress_interval == 0:
+                    current_time = tm.time()  # Get the current time
+                    elapsed_time = current_time - start_time
+                    print(f"Progress: {batch_idx / num_batches * 100:.1f}%, Time elapsed: {elapsed_time:.2f} seconds")
+        elif gradient_aggregated:
+            # Compute loss (e.g., sum of output)
+            loss = output.sum()
+
+            for i, softmax_weights_ref in enumerate(self.softmax_weights_refs):
+                if softmax_weights_ref.requires_grad:
+                    # Set retain_graph=False on the last iteration
+                    retain_graph = i < len(self.softmax_weights_refs) - 1
+                    softmax_gradients = torch.autograd.grad(loss, softmax_weights_ref, retain_graph=retain_graph)[0]
+                    _, _, seq_len_q, _ = softmax_weights_ref.size()
+                    # Determine the storage key
+                    if seq_len_q not in self.attention_map_gradients:
+                        self.attention_map_gradients[seq_len_q] = {}
+                        self.attention_map_store[seq_len_q] = {}
+
+                    key = str(len(self.attention_map_gradients[seq_len_q]))
+                    
+                    # Store gradients and weights
+                    self.attention_map_gradients[seq_len_q][key] = softmax_gradients
+                    self.attention_map_store[seq_len_q][key] = softmax_weights_ref.detach().clone()
+        else:
+            for i, softmax_weights_ref in enumerate(self.softmax_weights_refs):
+                if softmax_weights_ref.requires_grad:    
+                    _, _, seq_len_q, _ = softmax_weights_ref.size()
+                    # Determine the storage key
+                    key = str(seq_len_q) +"_"+ str(i)
+                    self.attention_map_store[key] = softmax_weights_ref.detach().clone()
+
         self.zero_grad()
         # remove hooks
         remove_hooks(self.unet)
-      
-    
-
