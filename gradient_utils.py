@@ -186,13 +186,13 @@ def create_mask(score_map):
 
 #     return mask
 
-def create_mask_from_subjects(score_map_list):
+def create_mask_from_subjects(score_map_list, timestamp):
     """
     Create a mask by thresholding the score map after applying Gaussian smoothing.
     
     Input:
         score_map_list: Dictionary of score maps
-    
+        timestamp: int tensor
     Return:
         mask: Tensor representing the union of thresholded score maps
     """
@@ -202,8 +202,9 @@ def create_mask_from_subjects(score_map_list):
 
     # Define Gaussian kernel (e.g., size=5, sigma=1.0 for this example)
     kernel_size = 5
-    sigma = 1.0
+    sigma = 6.0
     kernel = gaussian_kernel(kernel_size, sigma, channel).to(device)
+    max_timestamp = torch.tensor(680)
 
     for subject, score_map in score_map_list.items():
         # Apply Gaussian smoothing
@@ -211,7 +212,7 @@ def create_mask_from_subjects(score_map_list):
         
         # Calculate thresholds
         std_threshold = torch.std(score_map_smooth)
-        threshold = torch.mean(score_map_smooth)
+        threshold = torch.mean(score_map_smooth) #- 0.5 * std_threshold # * (max_timestamp - timestamp) * 0.012
         print(subject, " ", threshold, torch.max(score_map_smooth), torch.min(score_map_smooth), std_threshold)
         
         # Create window mask
@@ -252,22 +253,21 @@ def latent_space_manipulation(latents, noised_latent_t, score_maps):
 
     return latents
 
-def latent_space_manipulation_subjectwise(latents, noised_latent_t, score_maps):
+def latent_space_manipulation_subjectwise(latents, noised_latent_t, score_maps, timestamp):
     """
     Manipulate the latent space by replacing the values in the latents tensor with the corresponding values from the noised_latent_t tensor.
     input: latents, noised_latent_t, score_maps
     return: latents
     """
-    masks = [create_mask_from_subjects(score_map) for score_map in score_maps]
+    masks = [create_mask_from_subjects(score_map, timestamp) for score_map in score_maps]
     
     mask = intersect_masks(masks)
-    print(mask.size())
     zero_indices = (mask == 0).nonzero()
-    zero_len = len(zero_indices)
+    # zero_len = len(zero_indices)
     save_path = 'images/mask_heatmap_{zero_len}.png'
     visualize_heatmap(mask, save_path)
     
-    print(len(zero_indices))
+    # print(len(zero_indices))
     for idx in zero_indices:
         latents[0, idx[1], idx[2], idx[3]] = noised_latent_t[0, idx[1], idx[2], idx[3]]
 
