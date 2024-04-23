@@ -48,6 +48,6 @@ def latent_space_manipulation(latents, noised_latent_t, attention_maps, is_gradi
 def timestamps_to_manipulate(sampler):
     # control which other noised latents are needed for particular timesteps
     # TODO: devise a strategy to select timesteps for manipulating latent space
-    timesteps = [sampler.timesteps[5], sampler.timesteps[10], sampler.timesteps[15]]
+    timesteps = [sampler.timesteps[5], sampler.timesteps[18], sampler.timesteps[28]]
     return timesteps
 

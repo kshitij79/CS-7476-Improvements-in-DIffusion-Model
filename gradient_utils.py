@@ -2,6 +2,8 @@ import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import numpy as np
+from skimage.feature import peak_local_max
+from sklearn.cluster import DBSCAN
 
 def gaussian_kernel(size, sigma, channels):
     """Generate a 2D Gaussian kernel expanded across specified channels for grouped convolution."""
@@ -15,6 +17,12 @@ def gaussian_kernel(size, sigma, channels):
     g /= g.sum()
     # Expand to the number of channels: each channel uses the same kernel
     return g.view(1, 1, size, size).repeat(channels, 1, 1, 1)
+
+def create_dilation_kernel(kernel_size, channels):
+    """Generate a square kernel for morphological dilation."""
+    kernel = torch.ones(kernel_size, kernel_size)
+    kernel = kernel.view(1, 1, kernel_size, kernel_size).repeat(channels, 1, 1, 1)
+    return kernel
 
 # function to compress attention maps, first it filter the subjects of interest, then it sums the gradients for each subject
 def compress_attention_gradients(attention_gradients, subject_info):
@@ -51,7 +59,7 @@ def importance_score(attention_map, attention_gradients, subject_info):
             thresholded_gradient = torch.where(gradient > 0, gradient, torch.tensor(0.0))
             # in summed_attention_gradient, we store the sum of hadamard product of attention_map and thresholded_gradient
             # https://arxiv.org/pdf/2204.11073.pdf motivated from Grad SAM
-            summed_attention_gradient[subject] = torch.sum(attention * thresholded_gradient)
+            summed_attention_gradient[subject] = torch.sum(attention*thresholded_gradient)
         summed_attention_gradients.append(summed_attention_gradient)       
     # print(len(summed_attention_gradients))
     return summed_attention_gradients
@@ -167,25 +175,6 @@ def create_mask(score_map):
     mask = mask.unsqueeze(0)
     return mask
 
-# def create_mask_from_subjects(score_map_list):
-#     """
-#     Create a mask by thresholding the score map.
-#     input: score_map_list
-#     return: mask
-#     """
-#     device = list(score_map_list.values())[0].device  # Get the device of the first score map
-#     batch_size, channel, height, width = list(score_map_list.values())[0].size()
-#     mask = torch.zeros(batch_size, channel, height, width, device=device)
-
-#     for subject, score_map in score_map_list.items():
-#         std_threshold = torch.std(score_map)
-#         threshold = torch.mean(score_map)
-#         print(subject, " ", threshold, torch.max(score_map), torch.min(score_map), std_threshold)
-#         window_mask = (score_map > threshold).float().to(device)  # Move window_mask to the same device
-#         mask = torch.max(mask, window_mask)  # Taking union of masks for all subjects
-
-#     return mask
-
 def create_mask_from_subjects(score_map_list, timestamp):
     """
     Create a mask by thresholding the score map after applying Gaussian smoothing.
@@ -201,18 +190,27 @@ def create_mask_from_subjects(score_map_list, timestamp):
     mask = torch.zeros(batch_size, channel, height, width, device=device)
 
     # Define Gaussian kernel (e.g., size=5, sigma=1.0 for this example)
-    kernel_size = 5
+    kernel_size = 3
     sigma = 6.0
     kernel = gaussian_kernel(kernel_size, sigma, channel).to(device)
-    max_timestamp = torch.tensor(680)
+
+    #
+    dilation_kernel = create_dilation_kernel(kernel_size, channel).to(device)
+
+    num_iterations = 3
 
     for subject, score_map in score_map_list.items():
         # Apply Gaussian smoothing
         score_map_smooth = F.conv2d(score_map, kernel, padding=kernel_size//2, groups=channel)
         
+        # Apply morphological dilation
+        score_map_dilated = score_map
+        for _ in range(num_iterations):
+            score_map_smooth = F.conv2d(score_map_dilated, dilation_kernel, padding=kernel_size//2, groups=channel)
+
         # Calculate thresholds
         std_threshold = torch.std(score_map_smooth)
-        threshold = torch.mean(score_map_smooth) #- 0.5 * std_threshold # * (max_timestamp - timestamp) * 0.012
+        threshold = torch.mean(score_map_smooth) + 0.5 * std_threshold # * (max_timestamp - timestamp) * 0.012
         print(subject, " ", threshold, torch.max(score_map_smooth), torch.min(score_map_smooth), std_threshold)
         
         # Create window mask
@@ -222,7 +220,6 @@ def create_mask_from_subjects(score_map_list, timestamp):
         mask = torch.max(mask, window_mask)
 
     return mask
-
 
 def intersect_masks(masks):
     """
@@ -263,11 +260,11 @@ def latent_space_manipulation_subjectwise(latents, noised_latent_t, score_maps, 
     
     mask = intersect_masks(masks)
     zero_indices = (mask == 0).nonzero()
-    # zero_len = len(zero_indices)
+    zero_len = len(zero_indices)
     save_path = 'images/mask_heatmap_{zero_len}.png'
     visualize_heatmap(mask, save_path)
     
-    # print(len(zero_indices))
+    print(len(zero_indices))
     for idx in zero_indices:
         latents[0, idx[1], idx[2], idx[3]] = noised_latent_t[0, idx[1], idx[2], idx[3]]
 
@@ -287,10 +284,3 @@ def visualize_heatmap(mask, save_path):
         plt.axis('off')
         plt.savefig(f"{save_path}_{i}.png")
         plt.close()
-
-
-
-
-
-
-
