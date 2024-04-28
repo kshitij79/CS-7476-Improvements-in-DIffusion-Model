@@ -40,7 +40,7 @@ def generate(
             to_idle = lambda x: x
 
         # Extract subject tokens and their clip encodings from the prompt
-        subject_info = extract_subject_tokens(prompt, models["clip"], device, tokenizer)
+        subject_info = extract_subject_tokens(prompt)
         print(f"Subject Info: {subject_info}")
 
         # Initialize random number generator according to the seed specified
@@ -112,6 +112,10 @@ def generate(
             encoder_noise = torch.randn(latents_shape, generator=generator, device=device)
             # (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = encoder(input_image_tensor, encoder_noise)
+            gradients = encoder.compute_gradients(input_image_tensor, encoder_noise)
+            # set threshold for these gradients, mask the image according to a threshold, now we retain the masked features while replacing the rest with the 
+            # dog image, then we have segmented mask for the dog, in output we see which part of this segment is highly correlated to the latent vector, 
+            # based on this corelation we create mask over the dog in latent vector,  
             # Add noise to the latents (the encoded input image)
             # (Batch_Size, 4, Latents_Height, Latents_Width)
             sampler.set_strength(strength=strength)

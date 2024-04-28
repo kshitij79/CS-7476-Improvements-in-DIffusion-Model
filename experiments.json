@@ -1,0 +1,99 @@
+{
+    "experiments": [
+      {
+        "category": "artificial",
+        "subcategories": [
+          {
+            "subcategory": "athletic_field",
+            "prompts": [
+              "Players running",
+              "Scoreboard displayed",
+              "People cheering"
+            ]
+          },
+          {
+            "subcategory": "industrial_area",
+            "prompts": [
+              "Machinery operating",
+              "Workers assembling",
+              "Smoke billowing"
+            ]
+          },
+          {
+            "subcategory": "residential_area",
+            "prompts": [
+              "Children playing",
+              "Cars parked",
+              "Streetlights illuminating",
+              "Neighbors chatting"
+            ]
+          },
+          {
+            "subcategory": "downtown",
+            "prompts": [
+              "Traffic flowing",
+              "Pedestrians bustling",
+              "Streetlights shimmering"
+            ]
+          },
+          {
+            "subcategory": "park",
+            "prompts": [
+              "Picnickers relaxing",
+              "Birds chirping",
+              "Squirrels playing"
+            ]
+          }
+        ]
+      },
+      {
+        "category": "natural",
+        "subcategories": [
+          {
+            "subcategory": "arid_area",
+            "prompts": [
+              "Cacti blooming",
+              "Sun glaring",
+              "Camel walking"
+            ]
+          },
+          {
+            "subcategory": "inland_water_body",
+            "prompts": [
+              "Duck floating",
+              "Boats drifting",
+              "Water rippling"
+            ]
+          },
+          {
+            "subcategory": "ocean",
+            "prompts": [
+              "Seagull standing",
+              "Sunset reflecting",
+              "Palm standing tall",
+              "sky setting"
+            ]
+          },
+          {
+            "subcategory": "forest",
+            "prompts": [
+              "Deer roaming",
+              "Bear roaming",
+              "Tiger walking",
+              "Insects harmonizing"
+            ]
+          },
+          {
+            "subcategory": "mountain",
+            "prompts": [
+              "Wind blowing",
+              "Clouds drifting",
+              "Goats climbing",
+              "Serene view"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  

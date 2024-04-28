@@ -1,5 +1,6 @@
 # Ignore data folder
 /data/
+/DATA-1/
 
 # Ignore requirements.txt file
 requirements.txt

@@ -101,4 +101,21 @@ class VAE_Encoder(nn.Sequential):
         x *= 0.18215
         
         return x
+    
+    def compute_gradients(self, x, noise):
+        # x: (Batch_Size, Channel, Height, Width)
+        # noise: (Batch_Size, 4, Height / 8, Width / 8)
+        
+        # Create a gradient tape to record the operations
+        with torch.enable_grad():
+            # Forward pass
+            x.requires_grad = True
+            output = self(x, noise)
+            output = output.sum()
+            # Calculate the gradients
+            gradients = torch.autograd.grad(outputs=output, inputs=x, create_graph=True)[0]
+            print(gradients)
+        return gradients
+    
+
 
