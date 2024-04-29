@@ -1,14 +1,7 @@
 import torch
 import numpy as np
 from tqdm import tqdm
-from attention_attribution import attention_map_dict_to_list, attribution_pipeline, calculate_contributions
-from cross_attention_map import visualize_cumulative_map
 from ddpm import DDPMSampler
-from filter_subject_token import extract_subject_tokens
-from subject_attention_maps import cumulative_attention_map, extract_subject_attention_maps, cumulative_subject_attention_map
-from latent_space_manipulator import timestamps_to_manipulate, latent_space_manipulation
-from gradient_utils import compress_attention_gradients, latent_space_manipulation as grad_manipulator, score_map, score_map_dict_to_list, score_map_with_subjects, latent_space_manipulation_subjectwise as grad_manipulator_2
-from attention_attribution import attribution_pipeline, attention_map_dict_to_list
 
 WIDTH = 512
 HEIGHT = 512
@@ -38,10 +31,6 @@ def generate(
             to_idle = lambda x: x.to(idle_device)
         else:
             to_idle = lambda x: x
-
-        # Extract subject tokens and their clip encodings from the prompt
-        subject_info = extract_subject_tokens(prompt)
-        print(f"Subject Info: {subject_info}")
 
         # Initialize random number generator according to the seed specified
         generator = torch.Generator(device=device)
@@ -90,7 +79,6 @@ def generate(
             raise ValueError("Unknown sampler value %s. ")
 
         latents_shape = (1, 4, LATENTS_HEIGHT, LATENTS_WIDTH)
-        noised_latents = dict()
 
         if input_image:
             encoder = models["encoder"]
@@ -108,27 +96,25 @@ def generate(
             # (Batch_Size, Height, Width, Channel) -> (Batch_Size, Channel, Height, Width)
             input_image_tensor = input_image_tensor.permute(0, 3, 1, 2)
             input_image_tensor = input_image_tensor.to(device)
+            print(f"The tensor is on device: {input_image_tensor.device}")
             # (Batch_Size, 4, Latents_Height, Latents_Width)
             encoder_noise = torch.randn(latents_shape, generator=generator, device=device)
             # (Batch_Size, 4, Latents_Height, Latents_Width)
-            latents = encoder(input_image_tensor, encoder_noise) 
+            latents = encoder(input_image_tensor, encoder_noise)
+
             # Add noise to the latents (the encoded input image)
             # (Batch_Size, 4, Latents_Height, Latents_Width)
             sampler.set_strength(strength=strength)
-
-            # control which other noised latents are needed for particular timesteps
-            other_timesteps = timestamps_to_manipulate(sampler)
-            print(f"Timesteps for manipulating latent space: {other_timesteps}")
-            latents, noised_latents = sampler.add_noise(latents, sampler.timesteps[0], other_timesteps)
+            latents = sampler.add_noise(latents, sampler.timesteps[0])
 
             to_idle(encoder)
         else:
             # (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = torch.randn(latents_shape, generator=generator, device=device)
 
-        latents = torch.randn(latents_shape, generator=generator, device=device)
         diffusion = models["diffusion"]
         diffusion.to(device)
+
         timesteps = tqdm(sampler.timesteps)
         for i, timestep in enumerate(timesteps):
             # (1, 320)
@@ -149,45 +135,8 @@ def generate(
                 output_cond, output_uncond = model_output.chunk(2)
                 model_output = cfg_scale * (output_cond - output_uncond) + output_uncond
 
-
             # (Batch_Size, 4, Latents_Height, Latents_Width) -> (Batch_Size, 4, Latents_Height, Latents_Width)
             latents = sampler.step(timestep, latents, model_output)
-            # int(sampler.timesteps[i+1]) in if condition also handle the last timestep
-            if i < len(sampler.timesteps) - 1 and int(sampler.timesteps[i+1]) in noised_latents.keys():
-                # set the attention map to empty
-                diffusion.set_attention_map({})
-                with torch.enable_grad():
-                    # world_size = torch.cuda.device_count()
-                    # torch.multiprocessing.spawn(main, args=(world_size, model_input, context, time_embedding), nprocs=world_size)
-                    diffusion.compute_gradients(model_input, context, time_embedding, subject_info)
-                # get the attention map gradients and attention map    
-                attention_gradients = diffusion.get_attention_map_gradients()
-                attention_map = diffusion.get_attention_map()
-                
-                gradient_dynamics = True
-                gradient_aggregated = False
-
-                if gradient_dynamics:
-                    # score = score_map(attention_gradients, model_output)
-                    score = score_map_with_subjects(attention_gradients, model_output)
-                    diffusion.set_attention_map({})
-                    diffusion.set_attention_map_gradients({})
-                    latents = grad_manipulator_2(latents, noised_latents[int(sampler.timesteps[i+1])], score, int(sampler.timesteps[i+1]))
-                elif gradient_aggregated:
-                    # attention maps based on contribution
-                    attention_maps_for_masks = attribution_pipeline(attention_gradients, attention_map, subject_info)
-                    attention_maps = attention_map_dict_to_list(attention_maps_for_masks)
-                    diffusion.set_attention_map({})
-                    diffusion.set_attention_map_gradients({})
-                    latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], attention_maps)
-                else:    
-                    subject_attention_maps = extract_subject_attention_maps(attention_map, subject_info)
-                    cumulative_attention_maps = cumulative_attention_map(subject_attention_maps)
-                    # visualize_cumulative_map(cumulative_attention_maps, int(sampler.timesteps[i+1]))
-                    cumulative_attention_maps = cumulative_subject_attention_map(cumulative_attention_maps)
-                    diffusion.set_attention_map({})
-                    diffusion.set_attention_map_gradients({})
-                    latents = latent_space_manipulation(latents, noised_latents[int(sampler.timesteps[i+1])], cumulative_attention_maps)
 
         to_idle(diffusion)
 
@@ -220,12 +169,3 @@ def get_time_embedding(timestep):
     x = torch.tensor([timestep], dtype=torch.float32)[:, None] * freqs[None]
     # Shape: (1, 160 * 2)
     return torch.cat([torch.cos(x), torch.sin(x)], dim=-1)
-
-def extract_attention_gradients(model_output, context):
-    # First, clear previous gradients
-    context.requires_grad_(True)
-    model_output.sum().backward()
-    # Gradient of model output w.r.t. context
-    attention_gradients = context.grad
-    context.requires_grad_(False)  # Reset requires_grad to False for context tensor
-    return attention_gradients

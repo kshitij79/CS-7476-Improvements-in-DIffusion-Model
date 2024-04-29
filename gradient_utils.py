@@ -221,6 +221,55 @@ def create_mask_from_subjects(score_map_list, timestamp):
 
     return mask
 
+def create_mask_from_subjects(score_map_list, timestamp):
+    """
+    Create a mask by thresholding the score map after applying Gaussian smoothing.
+    
+    Input:
+        score_map_list: Dictionary of score maps
+        timestamp: int tensor
+    Return:
+        mask: Tensor representing the union of thresholded score maps
+    """
+    device = list(score_map_list.values())[0].device  # Get the device of the first score map
+    batch_size, channel, height, width = list(score_map_list.values())[0].size()
+    mask = torch.zeros(batch_size, channel, height, width, device=device)
+
+    # Define Gaussian kernel (e.g., size=5, sigma=1.0 for this example)
+    kernel_size = 3
+    sigma = 6.0
+    kernel = gaussian_kernel(kernel_size, sigma, channel).to(device)
+
+    dilation_kernel = create_dilation_kernel(kernel_size, channel).to(device)
+
+    num_iterations = 3
+
+    for subject, score_map in score_map_list.items():
+        # Apply Gaussian smoothing
+        score_map_smooth = F.conv2d(score_map, kernel, padding=kernel_size//2, groups=channel)
+        
+        # Apply morphological dilation
+        score_map_dilated = score_map
+        for _ in range(num_iterations):
+            score_map_smooth = F.conv2d(score_map_dilated, dilation_kernel, padding=kernel_size//2, groups=channel)
+
+        # Calculate thresholds for each channel separately
+        thresholds = []
+        for c in range(channel):
+            std_threshold = torch.std(score_map_smooth[:, c, :, :])
+            threshold = torch.mean(score_map_smooth[:, c, :, :]) + 0.5 * std_threshold  # Adjust this threshold calculation as needed
+            thresholds.append(threshold)
+
+        thresholds = torch.stack(thresholds, dim=0)  # Stack thresholds along a new dimension
+
+        # Create window mask for each channel
+        window_mask = (score_map_smooth > thresholds.view(1, channel, 1, 1)).float().to(device)
+        
+        # Taking union of masks for all subjects
+        mask = torch.max(mask, window_mask)
+
+    return mask
+
 def intersect_masks(masks):
     """
     Intersect the masks.
