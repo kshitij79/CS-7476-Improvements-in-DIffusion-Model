@@ -12,3 +12,7 @@ The primary goal of this project is to enhance text-to-image synthesis by integr
 - **Gradient-based Selective Attention (Grad-SAM)**: Integration of Grad-SAM for analyzing and manipulating cross attention maps.
 - **Latent Space Manipulation**: Techniques for adjusting the latent space to better align generated images with reference features.
 - **Performance Metrics**: Evaluation using Frechet Inception Distance (FID) and CLIP scores to assess image quality and textual alignment.
+
+## Acknowledgements
+
+This research was conducted as part of the CS 7476 Advanced Computer Vision course in Spring 2024 under the Professor James Hays.
